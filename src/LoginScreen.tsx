@@ -2,39 +2,42 @@
 import React, { useState, useEffect, useRef, memo } from 'react';
 import { 
   StyleSheet, Text, View, TextInput, TouchableOpacity, 
-  SafeAreaView, KeyboardAvoidingView, Platform, Alert, Animated 
+  SafeAreaView, KeyboardAvoidingView, Platform, Alert, Animated, ActivityIndicator 
 } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
-import Svg, { Path, Circle, Rect } from 'react-native-svg';
+import * as SecureStore from 'expo-secure-store';
+import Svg, { Path, Circle } from 'react-native-svg';
 
-// MEMOIZED MERGED WATERMARK BACKGROUND: Structured cleanly with SVG primitives to merge into the dark base theme context seamlessly
+// ACTIVE BASE URL
+const BASE_URL = 'https://ranger-lushly-cause.ngrok-free.dev';
+
+// MEMOIZED MERGED WATERMARK BACKGROUND
 const BackgroundLogo = memo(() => (
   <View style={styles.watermarkContainer} pointerEvents="none">
     <Svg width="280" height="280" viewBox="0 0 100 100" fill="none">
-      {/* Outer technical engineering alignment grid */}
       <Circle cx="50" cy="50" r="24" stroke="#FFFFFF" strokeWidth="0.8" strokeDasharray="4 4" />
       <Circle cx="50" cy="50" r="16" stroke="#FFFFFF" strokeWidth="0.5" />
       
-      {/* Stylized facility pillars / maintenance asset vector geometry blocks */}
       <Path d="M38 62 L38 48 L42 44 L46 48 L46 62 Z" stroke="#FFFFFF" strokeWidth="1" />
       <Path d="M46 62 L46 48 L50 44 L54 48 L54 62 Z" stroke="#FFFFFF" strokeWidth="1" />
       <Path d="M54 62 L54 48 L58 44 L62 48 L62 62 Z" stroke="#FFFFFF" strokeWidth="1" />
       <Path d="M34 62 L66 62" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" />
       
-      {/* Cross-axis intersecting tech targets */}
       <Path d="M50 12 L50 20 M50 80 L50 88 M12 50 L20 50 M80 50 L88 50" stroke="#FFFFFF" strokeWidth="1.2" strokeLinecap="round" />
     </Svg>
     <Text style={styles.watermarkText}>MS CONNECT</Text>
   </View>
 ));
 
-export default function LoginScreen({ navigation }: any) {
+export default function LoginScreen({ navigation, setUserRole }: any) {
   const [username, setUsername] = useState('');
-  const [hostel, setHostel] = useState('');
   const [password, setPassword] = useState('');
   const [isBiometricSupported, setIsBiometricSupported] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Increased transition duration handles for a smoother, high-end look
+  // Synchronous lock ref to block multi-touch / double-firing IMMEDIATELY
+  const submittingRef = useRef(false);
+
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const slideAnimHeader = useRef(new Animated.Value(-120)).current; 
   const slideAnimForm = useRef(new Animated.Value(180)).current;    
@@ -50,7 +53,6 @@ export default function LoginScreen({ navigation }: any) {
       }
     })();
 
-    // Enhanced animation orchestrator for fluid UI element timing
     Animated.parallel([
       Animated.timing(fadeAnim, { toValue: 1, duration: 1100, useNativeDriver: true }),
       Animated.spring(slideAnimHeader, { toValue: 0, friction: 7, tension: 35, useNativeDriver: true }),
@@ -60,23 +62,174 @@ export default function LoginScreen({ navigation }: any) {
     return () => { isMounted = false; };
   }, []);
 
-  const handleLogin = () => {
-    if (!username || !hostel || !password) {
-      Alert.alert('Missing Fields', 'Please complete your input parameters to sign in.');
+  const routeUserByRole = (role: string, userId: number | string, userData?: any) => {
+    const formattedRole = role ? role.toLowerCase() : 'student';
+
+    if (setUserRole) {
+      setUserRole(formattedRole);
+    }
+
+    switch (formattedRole) {
+      case 'technician':
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'TechnicianOrders', params: { technicianId: userId, user: userData, userId } }],
+        });
+        break;
+      case 'admin':
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'AdminConsole', params: { userId: userId, user: userData } }],
+        });
+        break;
+      case 'student':
+      default:
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'Dashboard', params: { userId: userId, user: userData } }],
+        });
+        break;
+    }
+  };
+
+  const handleLogin = async () => {
+    if (submittingRef.current || isSubmitting) return;
+
+    if (!username.trim() || !password) {
+      Alert.alert('Missing Fields', 'Please enter your username/email and password.');
       return;
     }
-    navigation.navigate('Dashboard');
+
+    submittingRef.current = true;
+    setIsSubmitting(true);
+
+    let cleanInput = username.trim().toLowerCase();
+    let formattedUsername = cleanInput;
+
+    if (!cleanInput.includes('@')) {
+      formattedUsername = `${cleanInput}@knust.edu.gh`;
+    }
+
+    try {
+      const response = await fetch(`${BASE_URL}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true', // UPDATED NGROK BYPASS HEADER
+        },
+        body: JSON.stringify({
+          email: formattedUsername,
+          password: password
+        }),
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        const userObj = data.user || data;
+        
+        const role = (data.role || userObj?.role || 'student').toLowerCase();
+        const userId = data.id || data.userId || userObj?.id;
+
+        if (!userId) {
+          Alert.alert('Session Error', 'Could not resolve user ID from authentication server.');
+          submittingRef.current = false;
+          setIsSubmitting(false);
+          return;
+        }
+
+        await SecureStore.setItemAsync('secure_user_id', String(userId));
+        await SecureStore.setItemAsync('secure_user_email', formattedUsername);
+        await SecureStore.setItemAsync('secure_user_password', password);
+        await SecureStore.setItemAsync('secure_user_role', role);
+        await SecureStore.setItemAsync('user_data', JSON.stringify(userObj));
+
+        routeUserByRole(role, userId, userObj);
+      } else {
+        const errorText = await response.text();
+        let message = 'Invalid username or password.';
+        try {
+          const parsed = JSON.parse(errorText);
+          message = parsed.error || parsed.message || message;
+        } catch (_) {}
+        
+        Alert.alert('Login Failed', message);
+      }
+    } catch (error) {
+      console.error("Login connection error: ", error);
+      Alert.alert('Server Error', 'Unable to reach backend server. Please verify your network connection.');
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
+    }
   };
 
   const handleBiometricAuth = async () => {
+    if (submittingRef.current || isSubmitting) return;
+
     try {
+      const hasHardware = await LocalAuthentication.hasHardwareAsync();
+      const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+
+      if (!hasHardware || !isEnrolled) {
+        Alert.alert(
+          'Biometrics Unavailable', 
+          'Please verify that Face ID, Touch ID, or Passcode lock is set up in your device settings.'
+        );
+        return;
+      }
+
       const result = await LocalAuthentication.authenticateAsync({
-        promptMessage: 'Confirm Biometric ID Identity Alignment',
+        promptMessage: 'Confirm Biometric Alignment',
         fallbackLabel: 'Use Password',
+        disableDeviceFallback: false,
       });
-      if (result.success) navigation.navigate('Dashboard');
-    } catch {
-      Alert.alert('Error', 'Biometrics engine failure.');
+
+      if (result.success) {
+        submittingRef.current = true;
+        setIsSubmitting(true);
+
+        const savedId = await SecureStore.getItemAsync('secure_user_id');
+        const savedEmail = await SecureStore.getItemAsync('secure_user_email');
+        const savedPassword = await SecureStore.getItemAsync('secure_user_password');
+        const savedRole = await SecureStore.getItemAsync('secure_user_role');
+
+        if (savedEmail && savedPassword && savedRole) {
+          const response = await fetch(`${BASE_URL}/api/auth/login`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'ngrok-skip-browser-warning': 'true', // UPDATED NGROK BYPASS HEADER
+            },
+            body: JSON.stringify({
+              email: savedEmail.trim().toLowerCase(),
+              password: savedPassword
+            }),
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            const userObj = data.user || data;
+            const userId = data.id || data.userId || userObj?.id || savedId;
+
+            if (userId) {
+              await SecureStore.setItemAsync('secure_user_id', String(userId));
+              await SecureStore.setItemAsync('user_data', JSON.stringify(userObj));
+            }
+
+            routeUserByRole(savedRole, userId, userObj);
+          } else {
+            Alert.alert('Session Reset', 'Authentication state expired. Please sign in manually.');
+          }
+        } else {
+          Alert.alert('Manual Login Required', 'Please complete manual sign-in once to activate Face ID.');
+        }
+      }
+    } catch (error) {
+      console.error("Biometric authentication error: ", error);
+      Alert.alert('Error', 'An unexpected error occurred in biometrics driver.');
+    } finally {
+      submittingRef.current = false;
+      setIsSubmitting(false);
     }
   };
 
@@ -88,37 +241,48 @@ export default function LoginScreen({ navigation }: any) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
         style={styles.innerContainer}
       >
-        {/* SLIDING APP DISPLAY TITLE BLOCK */}
         <Animated.View style={[styles.headerContainer, { opacity: fadeAnim, transform: [{ translateY: slideAnimHeader }] }]}>
           <Text style={styles.logoText}>MS CONNECT</Text>
           <Text style={styles.taglineText}>Intelligent Maintenance & Service Platform</Text>
         </Animated.View>
 
-        {/* SLIDING AUTH PANEL CARD CONTAINER */}
         <Animated.View style={[styles.formContainer, { opacity: fadeAnim, transform: [{ translateY: slideAnimForm }] }]}>
           <Text style={styles.inputLabel}>Username / University Email</Text>
           <TextInput 
-            style={styles.inputField} placeholder="username@knust.edu.gh" placeholderTextColor="#444"
-            value={username} onChangeText={setUsername} keyboardType="email-address" autoCapitalize="none"
-          />
-
-          <Text style={styles.inputLabel}>Hostel / Residence</Text>
-          <TextInput 
-            style={styles.inputField} placeholder="e.g., Unity Hall (Republic)" placeholderTextColor="#444"
-            value={hostel} onChangeText={setHostel} autoCapitalize="words"
+            style={styles.inputField} 
+            placeholder="username@knust.edu.gh" 
+            placeholderTextColor="#444"
+            value={username} 
+            onChangeText={setUsername} 
+            keyboardType="email-address" 
+            autoCapitalize="none"
+            editable={!isSubmitting}
           />
 
           <Text style={styles.inputLabel}>Password</Text>
           <TextInput 
-            style={styles.inputField} placeholder="••••••••" placeholderTextColor="#444"
-            value={password} onChangeText={setPassword} secureTextEntry
+            style={styles.inputField} 
+            placeholder="••••••••" 
+            placeholderTextColor="#444"
+            value={password} 
+            onChangeText={setPassword} 
+            secureTextEntry
+            editable={!isSubmitting}
           />
 
-          <TouchableOpacity style={styles.loginButton} onPress={handleLogin} activeOpacity={0.85}>
-            <Text style={styles.loginButtonText}>SIGN IN</Text>
+          <TouchableOpacity 
+            style={[styles.loginButton, isSubmitting && { opacity: 0.7 }]} 
+            onPress={handleLogin} 
+            activeOpacity={0.85}
+            disabled={isSubmitting}
+          >
+            {isSubmitting ? (
+              <ActivityIndicator color="#09090B" />
+            ) : (
+              <Text style={styles.loginButtonText}>SIGN IN</Text>
+            )}
           </TouchableOpacity>
 
-          {/* APP BIOMETRIC FACE ID SELECTION ELEMENT */}
           {isBiometricSupported && (
             <View style={styles.biometricOuterWrapper}>
               <View style={styles.dividerRow}>
@@ -127,42 +291,41 @@ export default function LoginScreen({ navigation }: any) {
                 <View style={styles.dividerLine} />
               </View>
 
-              <TouchableOpacity style={styles.biometricTouchTarget} onPress={handleBiometricAuth} activeOpacity={0.7}>
-  {/* MODERN HIGH-FIDELITY SCROLL RING DESIGN AS SEEN IN WHATSAPP/FINTECH APPS */}
-  <View style={styles.biometricIconBox}>
-    <Svg width="44" height="44" viewBox="0 0 24 24" fill="none">
-      {/* WhatsApp-Style Ultra-Thin Outer Scanning Guide Track */}
-      <Circle cx="12" cy="12" r="10" stroke="#F5A623" strokeWidth="1" strokeDasharray="3 2" opacity={0.35} />
-      
-      {/* Modern Continuous Precision Corner Framing Brackets */}
-      <Path d="M7 3H5C3.9 3 3 3.9 3 5V7" stroke="#F5A623" strokeWidth="1.5" strokeLinecap="round" />
-      <Path d="M17 3H19C20.1 3 21 3.9 21 5V7" stroke="#F5A623" strokeWidth="1.5" strokeLinecap="round" />
-      <Path d="M3 17V19C3 20.1 3.9 21 5 21H7" stroke="#F5A623" strokeWidth="1.5" strokeLinecap="round" />
-      <Path d="M21 17V19C21 20.1 20.1 21 19 21H16" stroke="#F5A623" strokeWidth="1.5" strokeLinecap="round" />
-      
-      {/* Professional Facial Identification Node Vector Grid */}
-      <Path d="M9 10C9 9 10 8.5 12 8.5C14 8.5 15 9 15 10" stroke="#F5A623" strokeWidth="1.5" strokeLinecap="round" />
-      <Path d="M9 15C9 15 10.5 16.2 12 16.2C13.5 16.2 15 15 15 15" stroke="#F5A623" strokeWidth="1.5" strokeLinecap="round" />
-      <Path d="M12 10V13.2H10.5" stroke="#F5A623" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-      
-      {/* Micro Targeting Scanner Alignment Rings */}
-      <Circle cx="8" cy="11.5" r="0.75" fill="#F5A623" />
-      <Circle cx="16" cy="11.5" r="0.75" fill="#F5A623" />
-    </Svg>
-  </View>
-  <Text style={styles.biometricActionLabel}>Sign in with Face ID</Text>
-</TouchableOpacity>
+              <TouchableOpacity 
+                style={[styles.biometricTouchTarget, isSubmitting && { opacity: 0.5 }]} 
+                onPress={handleBiometricAuth} 
+                activeOpacity={0.7}
+                disabled={isSubmitting}
+              >
+                <View style={styles.biometricIconBox}>
+                  <Svg width="44" height="44" viewBox="0 0 24 24" fill="none">
+                    <Circle cx="12" cy="12" r="10" stroke="#F5A623" strokeWidth="1" strokeDasharray="3 2" opacity={0.35} />
+                    <Path d="M7 3H5C3.9 3 3 3.9 3 5V7" stroke="#F5A623" strokeWidth="1.5" strokeLinecap="round" />
+                    <Path d="M17 3H19C20.1 3 21 3.9 21 5V7" stroke="#F5A623" strokeWidth="1.5" strokeLinecap="round" />
+                    <Path d="M3 17V19C3 20.1 3.9 21 5 21H7" stroke="#F5A623" strokeWidth="1.5" strokeLinecap="round" />
+                    <Path d="M21 17V19C21 20.1 20.1 21 19 21H16" stroke="#F5A623" strokeWidth="1.5" strokeLinecap="round" />
+                    <Path d="M9 10C9 9 10 8.5 12 8.5C14 8.5 15 9 15 10" stroke="#F5A623" strokeWidth="1.5" strokeLinecap="round" />
+                    <Path d="M9 15C9 15 10.5 16.2 12 16.2C13.5 16.2 15 15 15 15" stroke="#F5A623" strokeWidth="1.5" strokeLinecap="round" />
+                    <Path d="M12 10V13.2H10.5" stroke="#F5A623" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    <Circle cx="8" cy="11.5" r="0.75" fill="#F5A623" />
+                    <Circle cx="16" cy="11.5" r="0.75" fill="#F5A623" />
+                  </Svg>
+                </View>
+                <Text style={styles.biometricActionLabel}>Sign in with Face ID</Text>
+              </TouchableOpacity>
             </View>
           )}
+
           <TouchableOpacity
             style={{ alignItems: 'center', marginTop: 22 }}
-            onPress={() => navigation.navigate('SignUp')}
+            onPress={() => !isSubmitting && navigation.navigate('SignUp')}
             activeOpacity={0.7}
-            >
-              <Text style={{ color: '#666', fontSize: 13, fontWeight: '600' }}>
+            disabled={isSubmitting}
+          >
+            <Text style={{ color: '#666', fontSize: 13, fontWeight: '600' }}>
               Don't have an account? <Text style={{ color: '#F5A623', fontWeight: '700' }}>Sign Up</Text>
             </Text>
-            </TouchableOpacity>
+          </TouchableOpacity>
 
         </Animated.View>
 
@@ -193,7 +356,7 @@ const styles = StyleSheet.create({
   biometricIconBox: { 
     width: 68, 
     height: 68, 
-    borderRadius: 16, // Premium soft rounded rectangle box pattern layout matching major consumer banking setups
+    borderRadius: 16, 
     backgroundColor: '#09090B', 
     borderWidth: 1, 
     borderColor: 'rgba(245, 166, 35, 0.12)', 

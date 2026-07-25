@@ -1,63 +1,168 @@
 // src/AdminConsoleScreen.tsx
-import React, { useState } from 'react';
-import { StyleSheet, Text, View, ScrollView, SafeAreaView, TouchableOpacity, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { 
+  StyleSheet, Text, View, ScrollView, SafeAreaView, 
+  TouchableOpacity, ActivityIndicator, RefreshControl 
+} from 'react-native';
 
-export default function AdminConsoleScreen({ navigation }: any) {
+export default function AdminConsoleScreen({ navigation, setUserRole }: any) {
   const [viewMode, setViewMode] = useState<'dispatch' | 'analytics'>('dispatch');
+  const [reports, setReports] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [refreshing, setRefreshing] = useState<boolean>(false);
+
+  // --- BASE API TUNNEL URL ---
+  const BASE_URL = 'https://ranger-lushly-cause.ngrok-free.dev';
+
+  // --- RETURN TO DASHBOARD OR LOGOUT ---
+  const handleHeaderBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+    } else if (setUserRole) {
+      setUserRole(null);
+    }
+  };
+
+  // --- FETCH REAL-TIME BACKEND DATA ---
+  const fetchAdminData = async () => {
+    try {
+      const reportsResponse = await fetch(`${BASE_URL}/api/reports`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true', // UPDATED NGROK BYPASS HEADER
+        },
+      });
+      if (reportsResponse.ok) {
+        const reportsData = await reportsResponse.json();
+        setReports(reportsData);
+      }
+
+      const statsResponse = await fetch(`${BASE_URL}/api/reports/stats`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true', // UPDATED NGROK BYPASS HEADER
+        },
+      });
+      if (statsResponse.ok) {
+        const statsData = await statsResponse.json();
+        setStats(statsData);
+      }
+    } catch (error) {
+      console.error("Error connecting to Admin endpoints: ", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchAdminData();
+  }, []);
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchAdminData();
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
-        <TouchableOpacity onPress={() => navigation.navigate('Dashboard')}><Text style={styles.backLink}>← Dashboard</Text></TouchableOpacity>
+        <TouchableOpacity onPress={handleHeaderBack}>
+          <Text style={styles.backLink}>← Dashboard</Text>
+        </TouchableOpacity>
         <Text style={styles.titleText}>Executive Console</Text>
       </View>
 
       <View style={styles.tabBar}>
-        <TouchableOpacity style={[styles.tab, viewMode === 'dispatch' && styles.activeTab]} onPress={() => setViewMode('dispatch')}>
-          <Text style={[styles.tabText, viewMode === 'dispatch' && styles.activeTabText]}>AUTO-DISPATCH ENGINE</Text>
+        <TouchableOpacity 
+          style={[styles.tab, viewMode === 'dispatch' && styles.activeTab]} 
+          onPress={() => setViewMode('dispatch')}
+        >
+          <Text style={[styles.tabText, viewMode === 'dispatch' && styles.activeTabText]}>LIVE DISPATCH STREAM</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={[styles.tab, viewMode === 'analytics' && styles.activeTab]} onPress={() => setViewMode('analytics')}>
+        <TouchableOpacity 
+          style={[styles.tab, viewMode === 'analytics' && styles.activeTab]} 
+          onPress={() => setViewMode('analytics')}
+        >
           <Text style={[styles.tabText, viewMode === 'analytics' && styles.activeTabText]}>SLA METRICS</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 20 }}>
-        {viewMode === 'dispatch' ? (
+      <ScrollView 
+        contentContainerStyle={{ padding: 20 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#F5A623" />}
+      >
+        {loading ? (
+          <ActivityIndicator size="large" color="#F5A623" style={{ marginTop: 40 }} />
+        ) : viewMode === 'dispatch' ? (
           <View style={styles.cardStack}>
-            <Text style={styles.panelTitle}>⚡ Background Engine Stream</Text>
+            <Text style={styles.panelTitle}>⚡ Background Engine Stream ({reports.length} Total Reports)</Text>
             
-            <View style={styles.logCard}>
-              <Text style={styles.logMeta}>Ticket #1025 • Priority: Urgent</Text>
-              <Text style={styles.logStatus}>[MATCHED AUTOMATICALLY]</Text>
-              <Text style={styles.logDesc}>Dispatched to Plumber K. Mensah (Proximity: 250m away, Workload: 1 active job).</Text>
-            </View>
+            {reports.length === 0 ? (
+              <View style={styles.logCard}>
+                <Text style={styles.logMeta}>No active maintenance reports found.</Text>
+              </View>
+            ) : (
+              reports.map((report) => (
+                <View key={report.id || Math.random()} style={styles.logCard}>
+                  <Text style={styles.logMeta}>
+                    Ticket #{report.id} • Priority: {(report.priority || 'Medium').toUpperCase()}
+                  </Text>
+                  
+                  <Text style={[
+                    styles.logStatus, 
+                    report.assignedToName ? { color: '#34C759' } : { color: '#FF9500' }
+                  ]}>
+                    {report.assignedToName ? `[DISPATCHED TO: ${report.assignedToName.toUpperCase()}]` : '[AWAITING DISPATCH]'}
+                  </Text>
 
-            <View style={styles.logCard}>
-              <Text style={styles.logMeta}>Ticket #1024 • Priority: High</Text>
-              <Text style={styles.logStatus}>[MATCHED AUTOMATICALLY]</Text>
-              <Text style={styles.logDesc}>Dispatched to Electrician J. Boakye (Skill alignment verified, Proximity: 400m away).</Text>
-            </View>
+                  <Text style={styles.logDesc}>
+                    <Text style={{ color: '#FFF', fontWeight: '700' }}>Category:</Text> {report.category || 'General'}{'\n'}
+                    <Text style={{ color: '#FFF', fontWeight: '700' }}>Location:</Text> {report.blockLandmark || 'N/A'} (Room {report.roomNumber || 'N/A'}){'\n'}
+                    <Text style={{ color: '#FFF', fontWeight: '700' }}>Description:</Text> {report.description}{'\n'}
+                    <Text style={{ color: '#FFF', fontWeight: '700' }}>Status:</Text> {(report.status || 'pending').toUpperCase()}
+                  </Text>
+                </View>
+              ))
+            )}
           </View>
         ) : (
           <View style={styles.cardStack}>
             <Text style={styles.panelTitle}>📊 Performance Indexes</Text>
             
-            <View style={styles.metricRow}>
-              <View style={styles.metricBox}>
-                <Text style={styles.metricValue}>14 mins</Text>
-                <Text style={styles.metricLabel}>Avg Response Delay</Text>
-              </View>
-              <View style={styles.metricBox}>
-                <Text style={[styles.metricValue, { color: '#34C759' }]}>94.2%</Text>
-                <Text style={styles.metricLabel}>SLA Compliance Rate</Text>
-              </View>
-            </View>
+            {stats && (
+              <>
+                <View style={styles.metricRow}>
+                  <View style={styles.metricBox}>
+                    <Text style={styles.metricValue}>{stats.totalReports || 0}</Text>
+                    <Text style={styles.metricLabel}>Total Filed Reports</Text>
+                  </View>
+                  <View style={styles.metricBox}>
+                    <Text style={[styles.metricValue, { color: '#34C759' }]}>{stats.resolvedReports || 0}</Text>
+                    <Text style={styles.metricLabel}>Resolved Reports</Text>
+                  </View>
+                </View>
 
-            <View style={styles.logCard}>
-              <Text style={styles.logMeta}>Hostel Breakdown Statistics</Text>
-              <Text style={styles.chartLine}>• Unity Hall: 8 reports filed this week</Text>
-              <Text style={styles.chartLine}>• Republic Hall: 5 reports filed this week</Text>
-            </View>
+                <View style={styles.metricRow}>
+                  <View style={styles.metricBox}>
+                    <Text style={[styles.metricValue, { color: '#FF9500' }]}>{stats.inProgressReports || 0}</Text>
+                    <Text style={styles.metricLabel}>In-Progress</Text>
+                  </View>
+                  <View style={styles.metricBox}>
+                    <Text style={[styles.metricValue, { color: '#FF3B30' }]}>{stats.pendingReports || 0}</Text>
+                    <Text style={styles.metricLabel}>Pending Tickets</Text>
+                  </View>
+                </View>
+
+                <View style={styles.logCard}>
+                  <Text style={styles.logMeta}>System Allocation Summary</Text>
+                  <Text style={styles.chartLine}>• Registered Technicians: {stats.totalTechnicians || 0}</Text>
+                  <Text style={styles.chartLine}>• High/Urgent Priority Tickets: {(stats.highPriority || 0) + (stats.urgentPriority || 0)}</Text>
+                  <Text style={styles.chartLine}>• Low/Medium Priority Tickets: {(stats.lowPriority || 0) + (stats.mediumPriority || 0)}</Text>
+                </View>
+              </>
+            )}
           </View>
         )}
       </ScrollView>
@@ -79,8 +184,8 @@ const styles = StyleSheet.create({
   panelTitle: { color: '#AEAEB2', fontSize: 13, fontWeight: '800', marginBottom: 12, letterSpacing: 0.5 },
   logCard: { backgroundColor: '#131316', padding: 14, borderRadius: 12, marginBottom: 12, borderWidth: 1, borderColor: 'rgba(255,255,255,0.02)' },
   logMeta: { color: '#FFF', fontSize: 13, fontWeight: '700' },
-  logStatus: { color: '#34C759', fontSize: 11, fontWeight: '800', marginTop: 2, letterSpacing: 0.5 },
-  logDesc: { color: '#8A8A8E', fontSize: 12, marginTop: 4, lineHeight: 16 },
+  logStatus: { fontSize: 11, fontWeight: '800', marginTop: 4, letterSpacing: 0.5 },
+  logDesc: { color: '#8A8A8E', fontSize: 12, marginTop: 6, lineHeight: 18 },
   metricRow: { flexDirection: 'row', gap: 12, marginBottom: 14 },
   metricBox: { flex: 1, backgroundColor: '#131316', padding: 16, borderRadius: 14, alignItems: 'center' },
   metricValue: { fontSize: 22, fontWeight: '900', color: '#F5A623' },

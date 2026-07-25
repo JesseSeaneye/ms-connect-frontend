@@ -2,20 +2,24 @@
 import React, { useState, useCallback } from 'react';
 import { 
   StyleSheet, Text, View, TextInput, TouchableOpacity, 
-  SafeAreaView, ScrollView, Alert, Image 
+  SafeAreaView, ScrollView, Alert, Image, Platform 
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import Svg, { Path, Rect } from 'react-native-svg';
+import Svg, { Path } from 'react-native-svg';
 
-// Static configurations pulled completely out of the runtime component thread to optimize performance
 const FAULT_CATEGORIES = [
   { label: 'Electrical', icon: '⚡' }, { label: 'Plumbing', icon: '🚰' },
   { label: 'Carpentry', icon: '🪚' }, { label: 'Sanitation', icon: '🧹' },
   { label: 'IT / Wi-Fi', icon: '🌐' }, { label: 'Masonry', icon: '🧱' }
 ];
 
-export default function ReportIssueScreen({ navigation }: any) {
-  // Core Interface Hooks
+export default function ReportIssueScreen({ route, navigation, setUserRole }: any) {
+  // Safely extract authenticated student ID or fallback smoothly
+  const activeUserId = route?.params?.userId || route?.params?.user?.id || null;
+
+  // BASE URL
+  const BASE_URL = 'https://ranger-lushly-cause.ngrok-free.dev';
+
   const [category, setCategory] = useState('Electrical');
   const [blockLandmark, setBlockLandmark] = useState('');
   const [roomNumber, setRoomNumber] = useState('');
@@ -23,8 +27,8 @@ export default function ReportIssueScreen({ navigation }: any) {
   const [attachedMedia, setAttachedMedia] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<'image' | 'video' | null>(null);
   const [activeInput, setActiveInput] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
 
-  // High-performance hardware camera and video handler
   const handlePickMedia = useCallback(async (selectVideo: boolean) => {
     const { granted } = await ImagePicker.requestCameraPermissionsAsync();
     if (!granted) {
@@ -34,9 +38,9 @@ export default function ReportIssueScreen({ navigation }: any) {
 
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: selectVideo ? ImagePicker.MediaTypeOptions.Videos : ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: !selectVideo,
-      quality: 0.6, // Compressed to prevent server upload bottlenecks
-      videoMaxDuration: 12,
+      allowsEditing: false,
+      quality: 0.25, // HEAVY COMPRESSION FOR FAST TRANSMISSION (~200KB)
+      videoMaxDuration: 15,
     });
 
     if (!result.canceled && result.assets?.[0]) {
@@ -45,33 +49,106 @@ export default function ReportIssueScreen({ navigation }: any) {
     }
   }, []);
 
-  const handleSubmitReport = () => {
+  const handleLogout = () => {
+    if (setUserRole) {
+      setUserRole(null);
+    }
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Login' }],
+    });
+  };
+
+  const handleSubmitReport = async () => {
     if (!blockLandmark || !roomNumber || !description) {
       Alert.alert('Missing Details', 'Please complete the Block, Room Number, and Description fields.');
       return;
     }
 
-    Alert.alert('Ticket Submitted', 'Your maintenance log has been successfully queued for processing.');
-    
-    // Smooth state reset sequence
-    setBlockLandmark('');
-    setRoomNumber('');
-    setDescription('');
-    setAttachedMedia(null);
-    setMediaType(null);
+    setSubmitting(true);
+
+    try {
+      const formData = new FormData();
+      formData.append('category', category);
+      formData.append('blockLandmark', blockLandmark);
+      formData.append('roomNumber', roomNumber);
+      formData.append('description', description);
+
+      if (activeUserId) {
+        formData.append('userId', String(activeUserId));
+      }
+
+      if (attachedMedia) {
+        let uri = attachedMedia;
+        if (Platform.OS === 'ios' && !uri.startsWith('file://')) {
+          uri = 'file://' + uri;
+        }
+
+        const ext = mediaType === 'video' ? 'mp4' : 'jpg';
+        const fileType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
+        const fileName = `upload_${Date.now()}.${ext}`;
+
+        formData.append('mediaFile', {
+          uri: uri,
+          name: fileName,
+          type: fileType,
+        } as any);
+      }
+
+      const response = await fetch(`${BASE_URL}/api/reports/submit`, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'ngrok-skip-browser-warning': 'true', // UPDATED NGROK BYPASS HEADER
+        },
+        body: formData,
+      });
+
+      if (response.ok) {
+        const responseData = await response.json().catch(() => null);
+        const resolvedUserId = responseData?.userId || responseData?.user?.id || activeUserId;
+
+        Alert.alert(
+          'Ticket Submitted 🎉', 
+          'Your ticket is now submitted and waiting for technician acceptance.',
+          [
+            {
+              text: 'View My Ticket History',
+              onPress: () => {
+                setBlockLandmark('');
+                setRoomNumber('');
+                setDescription('');
+                setAttachedMedia(null);
+                setMediaType(null);
+                navigation.navigate('TicketHistory', { userId: resolvedUserId });
+              }
+            }
+          ],
+          { cancelable: false }
+        );
+      } else {
+        const errorMsg = await response.text().catch(() => 'Unknown server rejection.');
+        Alert.alert('Submission Failed', `Server responded: ${errorMsg}`);
+      }
+    } catch (error) {
+      console.error("Ticket submission network error: ", error);
+      Alert.alert(
+        'Server Unreachable ❌', 
+        'Could not connect to backend. Verify Spring Boot and ngrok are running.'
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false} removeClippedSubviews={true}>
+      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
         
-        {/* COMPACT CLEAN APP TOP TITLE */}
         <Text style={styles.titleText}>Report a Fault</Text>
         <Text style={styles.subtitleText}>File an intelligent maintenance ticket instantly.</Text>
 
         <View style={styles.formCard}>
-          
-          {/* TWO-COLUMN FAULT SELECTOR GRID */}
           <Text style={styles.sectionLabel}>FAULT CATEGORY</Text>
           <View style={styles.categoryGrid}>
             {FAULT_CATEGORIES.map((item) => (
@@ -86,7 +163,6 @@ export default function ReportIssueScreen({ navigation }: any) {
             ))}
           </View>
 
-          {/* TWO-COLUMN RESPONSIVE ROOM PLACEMENT ROW */}
           <View style={styles.inputSplitRow}>
             <View style={{ flex: 1.6, marginRight: 8 }}>
               <Text style={styles.sectionLabel}>HOSTEL BLOCK / LANDMARK</Text>
@@ -108,7 +184,6 @@ export default function ReportIssueScreen({ navigation }: any) {
             </View>
           </View>
 
-          {/* FAULT LOG DESCRIPTION FIELD */}
           <Text style={styles.sectionLabel}>FAULT DESCRIPTION DETAILS</Text>
           <TextInput 
             style={[styles.input, styles.textArea, activeInput === 'desc' && styles.inputFocused]} 
@@ -117,10 +192,8 @@ export default function ReportIssueScreen({ navigation }: any) {
             onFocus={() => setActiveInput('desc')} onBlur={() => setActiveInput(null)}
           />
 
-          {/* ENTERPRISE-GRADE MEDIA DECK INTERFACE */}
           <Text style={styles.sectionLabel}>PROOF ATTACHMENTS</Text>
           <View style={styles.mediaActionDeck}>
-            
             <TouchableOpacity style={styles.mediaTab} onPress={() => handlePickMedia(false)} activeOpacity={0.7}>
               <Svg width="22" height="22" viewBox="0 0 24 24" fill="none">
                 <Path d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" stroke="#AEAEB2" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -136,10 +209,8 @@ export default function ReportIssueScreen({ navigation }: any) {
               </Svg>
               <Text style={styles.mediaTabText}>Upload Video</Text>
             </TouchableOpacity>
-
           </View>
 
-          {/* PREMIUM LIVE MEDIA ATTACHMENT PREVIEW DRAWER */}
           {attachedMedia && (
             <View style={styles.previewContainer}>
               <Image source={{ uri: attachedMedia }} style={styles.previewAsset} />
@@ -152,13 +223,12 @@ export default function ReportIssueScreen({ navigation }: any) {
             </View>
           )}
 
-          {/* MAIN ACTION TICKETING SUBMIT RUNNER */}
-          <TouchableOpacity style={styles.submitButton} onPress={handleSubmitReport} activeOpacity={0.85}>
-            <Text style={styles.submitButtonText}>SUBMIT TICKET</Text>
+          <TouchableOpacity style={styles.submitButton} onPress={handleSubmitReport} disabled={submitting} activeOpacity={0.85}>
+            <Text style={styles.submitButtonText}>{submitting ? 'SUBMITTING...' : 'SUBMIT TICKET'}</Text>
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity style={styles.logoutButton} onPress={() => navigation.navigate('Login')} activeOpacity={0.7}>
+        <TouchableOpacity style={styles.logoutButton} onPress={handleLogout} activeOpacity={0.7}>
           <Text style={styles.logoutButtonText}>Sign Out of Session</Text>
         </TouchableOpacity>
       </ScrollView>
@@ -183,44 +253,16 @@ const styles = StyleSheet.create({
   input: { backgroundColor: '#09090B', color: '#FFF', borderRadius: 10, padding: 12, fontSize: 15, borderWidth: 1, borderColor: '#222', marginTop: 2, flex: 1 },
   inputFocused: { borderColor: '#F5A623' },
   textArea: { height: 80, textAlignVertical: 'top' },
-  
-  // PREMIUM COMPACT MEDIA ACTION TRAY LAYOUT MATRIX
-  mediaActionDeck: { 
-    flexDirection: 'row', 
-    backgroundColor: '#09090B', 
-    borderRadius: 12, 
-    borderWidth: 1, 
-    borderColor: '#222',
-    marginTop: 2,
-    alignItems: 'center',
-    overflow: 'hidden'
-  },
-  mediaTab: { 
-    flex: 1, 
-    flexDirection: 'row', 
-    paddingVertical: 14, 
-    alignItems: 'center', 
-    justifyContent: 'center' 
-  },
-  mediaTabText: { 
-    color: '#AEAEB2', 
-    fontSize: 12, 
-    fontWeight: '700', 
-    marginLeft: 8 
-  },
-  mediaDeckDivider: { 
-    width: 1, 
-    height: 22, 
-    backgroundColor: 'rgba(255,255,255,0.05)' 
-  },
-
+  mediaActionDeck: { flexDirection: 'row', backgroundColor: '#09090B', borderRadius: 12, borderWidth: 1, borderColor: '#222', marginTop: 2, alignItems: 'center', overflow: 'hidden' },
+  mediaTab: { flex: 1, flexDirection: 'row', paddingVertical: 14, alignItems: 'center', justifyContent: 'center' },
+  mediaTabText: { color: '#AEAEB2', fontSize: 12, fontWeight: '700', marginLeft: 8 },
+  mediaDeckDivider: { width: 1, height: 22, backgroundColor: 'rgba(255,255,255,0.05)' },
   previewContainer: { marginTop: 14, borderRadius: 12, overflow: 'hidden', height: 130, position: 'relative', borderWidth: 1, borderColor: '#222' },
   previewAsset: { width: '100%', height: '100%', resizeMode: 'cover' },
   mediaBadge: { position: 'absolute', bottom: 8, left: 8, backgroundColor: 'rgba(0, 0, 0, 0.8)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 5 },
   mediaBadgeText: { color: '#F5A623', fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
   deleteBadge: { position: 'absolute', top: 8, right: 8, backgroundColor: 'rgba(255, 69, 58, 0.95)', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 6 },
   deleteBadgeText: { color: '#FFF', fontSize: 10, fontWeight: '700' },
-
   submitButton: { backgroundColor: '#F5A623', borderRadius: 12, paddingVertical: 15, alignItems: 'center', marginTop: 24 },
   submitButtonText: { color: '#09090B', fontSize: 15, fontWeight: '900', letterSpacing: 0.3 },
   logoutButton: { alignItems: 'center', marginTop: 26 },
