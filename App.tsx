@@ -9,9 +9,12 @@ import LoginScreen from './src/LoginScreen';
 import SignUpScreen from './src/SignUpScreen';
 import DashboardScreen from './src/DashboardScreen';
 import ReportIssueScreen from './src/ReportIssueScreen';
+import TechnicianTaskDetailScreen from './src/TechnicianTaskDetailScreen';
 import TicketHistoryScreen from './src/TicketHistoryScreen';
 import TechnicianOrdersScreen from './src/TechnicianOrdersScreen';
 import AdminConsoleScreen from './src/AdminConsoleScreen';
+// Add to imports
+import ChatbotScreen from './src/ChatbotScreen';
 
 // Prevent splash screen from auto-hiding before app initialization completes
 SplashScreen.preventAutoHideAsync().catch(() => {
@@ -80,9 +83,15 @@ export default function App() {
             <Stack.Screen name="TechnicianOrders">
               {(props) => <TechnicianOrdersScreen {...props} setUserRole={setUserRole} />}
             </Stack.Screen>
-
+            <Stack.Screen name="TechnicianTaskDetail">
+              {(props) => <TechnicianTaskDetailScreen {...props} setUserRole={setUserRole} />}
+            </Stack.Screen>
             <Stack.Screen name="AdminConsole">
               {(props) => <AdminConsoleScreen {...props} setUserRole={setUserRole} />}
+            </Stack.Screen>
+
+            <Stack.Screen name="Chatbot">
+              {(props) => <ChatbotScreen {...props} setUserRole={setUserRole} />}
             </Stack.Screen>
           </>
         )}

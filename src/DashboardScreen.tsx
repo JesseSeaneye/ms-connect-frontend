@@ -164,7 +164,7 @@ export default function DashboardScreen({ route, navigation, userRole, setUserRo
 
               <TouchableOpacity 
                 style={[styles.menuTile, styles.aiFeatureTile]} 
-                onPress={() => Alert.alert('AI System Integration', 'MS Connect AI Copilot engine initializing...')}
+                onPress={() => navigation.navigate('Chatbot')}
               >
                 <Text style={styles.tileIcon}>🤖</Text>
                 <Text style={[styles.tileTitle, { color: '#34C759' }]}>MS Connect AI Assistant Chatbot</Text>

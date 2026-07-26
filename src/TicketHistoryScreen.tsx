@@ -8,7 +8,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import * as SecureStore from 'expo-secure-store';
 
 // UPDATED BASE URL
-const BASE_URL = 'https://ranger-lushly-cause.ngrok-free.dev';
+const BASE_URL = 'https://neon-obstruct-refined.ngrok-free.dev';
 
 export default function TicketHistoryScreen({ route, navigation }: any) {
   const [reports, setReports] = useState<any[]>([]);

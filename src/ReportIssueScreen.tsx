@@ -18,7 +18,7 @@ export default function ReportIssueScreen({ route, navigation, setUserRole }: an
   const activeUserId = route?.params?.userId || route?.params?.user?.id || null;
 
   // BASE URL
-  const BASE_URL = 'https://ranger-lushly-cause.ngrok-free.dev';
+ const BASE_URL = 'https://neon-obstruct-refined.ngrok-free.dev';
 
   const [category, setCategory] = useState('Electrical');
   const [blockLandmark, setBlockLandmark] = useState('');

@@ -8,8 +8,8 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import Svg, { Path, Circle } from 'react-native-svg';
 
-// ACTIVE BASE URL
-const BASE_URL = 'https://ranger-lushly-cause.ngrok-free.dev';
+// ACTIVE BASE URL - Using ngrok static domain
+const BASE_URL = 'https://neon-obstruct-refined.ngrok-free.dev';
 
 // MEMOIZED MERGED WATERMARK BACKGROUND
 const BackgroundLogo = memo(() => (
@@ -62,41 +62,47 @@ export default function LoginScreen({ navigation, setUserRole }: any) {
     return () => { isMounted = false; };
   }, []);
 
-  const routeUserByRole = (role: string, userId: number | string, userData?: any) => {
+  const routeUserByRole = (role: string, userId: number | string) => {
     const formattedRole = role ? role.toLowerCase() : 'student';
 
     if (setUserRole) {
       setUserRole(formattedRole);
     }
 
-    switch (formattedRole) {
-      case 'technician':
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'TechnicianOrders', params: { technicianId: userId, user: userData, userId } }],
-        });
-        break;
-      case 'admin':
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'AdminConsole', params: { userId: userId, user: userData } }],
-        });
-        break;
-      case 'student':
-      default:
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'Dashboard', params: { userId: userId, user: userData } }],
-        });
-        break;
-    }
+    setTimeout(() => {
+      switch (formattedRole) {
+        // In LoginScreen.tsx, update routeUserByRole:
+case 'technician':
+  navigation.reset({
+    index: 0,
+    routes: [{ 
+      name: 'Dashboard', 
+      params: { userId: userId, role: 'technician' } 
+    }],
+  });
+  break;
+        case 'admin':
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Dashboard', params: { userId: userId, role: 'admin' } }],
+          });
+          break;
+        case 'student':
+        default:
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Dashboard', params: { userId: userId, role: 'student' } }],
+          });
+          break;
+      }
+    }, 0);
   };
 
   const handleLogin = async () => {
     if (submittingRef.current || isSubmitting) return;
 
     if (!username.trim() || !password) {
-      Alert.alert('Missing Fields', 'Please enter your username/email and password.');
+      Alert.alert('Missing Fields', 'Please enter your email and password.');
       return;
     }
 
@@ -104,10 +110,13 @@ export default function LoginScreen({ navigation, setUserRole }: any) {
     setIsSubmitting(true);
 
     let cleanInput = username.trim().toLowerCase();
-    let formattedUsername = cleanInput;
 
-    if (!cleanInput.includes('@')) {
-      formattedUsername = `${cleanInput}@knust.edu.gh`;
+    // ✅ VALIDATION: Only @gmail.com emails allowed
+    if (!cleanInput.endsWith('@gmail.com')) {
+      Alert.alert('Invalid Email', 'Please use a valid @gmail.com email address.');
+      submittingRef.current = false;
+      setIsSubmitting(false);
+      return;
     }
 
     try {
@@ -115,10 +124,10 @@ export default function LoginScreen({ navigation, setUserRole }: any) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true', // UPDATED NGROK BYPASS HEADER
+          'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify({
-          email: formattedUsername,
+          email: cleanInput,
           password: password
         }),
       });
@@ -138,15 +147,15 @@ export default function LoginScreen({ navigation, setUserRole }: any) {
         }
 
         await SecureStore.setItemAsync('secure_user_id', String(userId));
-        await SecureStore.setItemAsync('secure_user_email', formattedUsername);
+        await SecureStore.setItemAsync('secure_user_email', cleanInput);
         await SecureStore.setItemAsync('secure_user_password', password);
         await SecureStore.setItemAsync('secure_user_role', role);
         await SecureStore.setItemAsync('user_data', JSON.stringify(userObj));
 
-        routeUserByRole(role, userId, userObj);
+        routeUserByRole(role, userId);
       } else {
         const errorText = await response.text();
-        let message = 'Invalid username or password.';
+        let message = 'Invalid email or password.';
         try {
           const parsed = JSON.parse(errorText);
           message = parsed.error || parsed.message || message;
@@ -156,7 +165,7 @@ export default function LoginScreen({ navigation, setUserRole }: any) {
       }
     } catch (error) {
       console.error("Login connection error: ", error);
-      Alert.alert('Server Error', 'Unable to reach backend server. Please verify your network connection.');
+      Alert.alert('Server Error', 'Unable to reach backend server. Please check your network connection.');
     } finally {
       submittingRef.current = false;
       setIsSubmitting(false);
@@ -194,11 +203,19 @@ export default function LoginScreen({ navigation, setUserRole }: any) {
         const savedRole = await SecureStore.getItemAsync('secure_user_role');
 
         if (savedEmail && savedPassword && savedRole) {
+          // ✅ Validate stored email is @gmail.com
+          if (!savedEmail.endsWith('@gmail.com')) {
+            Alert.alert('Invalid Email', 'Stored email is not a valid @gmail.com address. Please login manually.');
+            submittingRef.current = false;
+            setIsSubmitting(false);
+            return;
+          }
+
           const response = await fetch(`${BASE_URL}/api/auth/login`, {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
-              'ngrok-skip-browser-warning': 'true', // UPDATED NGROK BYPASS HEADER
+              'ngrok-skip-browser-warning': 'true',
             },
             body: JSON.stringify({
               email: savedEmail.trim().toLowerCase(),
@@ -216,7 +233,7 @@ export default function LoginScreen({ navigation, setUserRole }: any) {
               await SecureStore.setItemAsync('user_data', JSON.stringify(userObj));
             }
 
-            routeUserByRole(savedRole, userId, userObj);
+            routeUserByRole(savedRole, userId);
           } else {
             Alert.alert('Session Reset', 'Authentication state expired. Please sign in manually.');
           }
@@ -247,10 +264,10 @@ export default function LoginScreen({ navigation, setUserRole }: any) {
         </Animated.View>
 
         <Animated.View style={[styles.formContainer, { opacity: fadeAnim, transform: [{ translateY: slideAnimForm }] }]}>
-          <Text style={styles.inputLabel}>Username / University Email</Text>
+          <Text style={styles.inputLabel}>Email Address</Text>
           <TextInput 
             style={styles.inputField} 
-            placeholder="username@knust.edu.gh" 
+            placeholder="username@gmail.com" 
             placeholderTextColor="#444"
             value={username} 
             onChangeText={setUsername} 

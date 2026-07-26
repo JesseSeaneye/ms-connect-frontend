@@ -1,12 +1,12 @@
-// app/screens/SignUpScreen.tsx
+// src/screens/SignUpScreen.tsx
 import React, { useState } from 'react';
 import { 
   StyleSheet, Text, View, TextInput, TouchableOpacity, 
   SafeAreaView, KeyboardAvoidingView, Platform, ScrollView, Alert 
 } from 'react-native';
 
-// FIXED BASE URL
-const BASE_URL = 'https://ranger-lushly-cause.ngrok-free.dev';
+// ACTIVE BASE URL - Using ngrok static domain
+const BASE_URL = 'https://neon-obstruct-refined.ngrok-free.dev';
 
 export default function SignUpScreen({ navigation }: any) {
   const [fullName, setFullName] = useState('');
@@ -20,11 +20,19 @@ export default function SignUpScreen({ navigation }: any) {
   const [specialty, setSpecialty] = useState('');
 
   const handleRegister = async () => {
+    // Validate required fields
     if (!fullName || !email || !password) {
-      Alert.alert('Incomplete Fields', 'Please fill in required information parameters.');
+      Alert.alert('Incomplete Fields', 'Please fill in all required information.');
       return;
     }
 
+    // ✅ VALIDATION: Only @gmail.com emails allowed
+    if (!email.endsWith('@gmail.com')) {
+      Alert.alert('Invalid Email', 'Please use a valid @gmail.com email address.');
+      return;
+    }
+
+    // Validate technician specialty
     if (role === 'technician' && !specialty) {
       Alert.alert('Specialty Required', 'Please provide a specialty for the technician (e.g., Electrical, Plumbing).');
       return;
@@ -35,7 +43,7 @@ export default function SignUpScreen({ navigation }: any) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true', // UPDATED NGROK BYPASS HEADER
+          'ngrok-skip-browser-warning': 'true',
         },
         body: JSON.stringify({
           name: fullName,
@@ -103,8 +111,8 @@ export default function SignUpScreen({ navigation }: any) {
             <Text style={styles.inputLabel}>Full Name</Text>
             <TextInput style={styles.inputField} placeholder="Kwaku Ohene-Djan Junior" placeholderTextColor="#444" value={fullName} onChangeText={setFullName} />
 
-            <Text style={styles.inputLabel}>University Email</Text>
-            <TextInput style={styles.inputField} placeholder="username@knust.edu.gh" placeholderTextColor="#444" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
+            <Text style={styles.inputLabel}>Email Address</Text>
+            <TextInput style={styles.inputField} placeholder="username@gmail.com" placeholderTextColor="#444" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
 
             {/* TECHNICIAN SPECIALTY FIELD (ONLY VISIBLE IF TECHNICIAN IS SELECTED) */}
             {role === 'technician' && (

@@ -7,6 +7,9 @@ import {
 import { Video, ResizeMode } from 'expo-av';
 import * as SecureStore from 'expo-secure-store';
 
+// ✅ FIXED BASE_URL
+const BASE_URL = 'https://neon-obstruct-refined.ngrok-free.dev';
+
 // --- ISOLATED MEDIA COMPONENT WITH SPINNER ---
 const MediaPreview = ({ fullMediaUrl, isVideo }: { fullMediaUrl: string; isVideo: boolean }) => {
   const [mediaLoading, setMediaLoading] = useState(true);
@@ -54,58 +57,77 @@ export default function TechnicianOrdersScreen({ route, navigation, setUserRole 
   const [loading, setLoading] = useState<boolean>(true);
   const [refreshing, setRefreshing] = useState<boolean>(false);
   const [viewTab, setViewTab] = useState<'pending' | 'active' | 'completed'>('pending');
-
-  // --- BASE API TUNNEL URL ---
-  const BASE_URL = 'https://ranger-lushly-cause.ngrok-free.dev';
+  const [debugInfo, setDebugInfo] = useState<string>('');
 
   // --- CLEAN LOGOUT HANDLER ---
   const handleLogout = () => {
     if (setUserRole) {
       setUserRole(null);
-    } else {
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'Login' }],
-      });
     }
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'Login' }],
+    });
   };
 
   // --- FETCH ASSIGNED TASKS ---
   const fetchAssignedTasks = async () => {
     try {
-      let activeId = route?.params?.technicianId || route?.params?.user?.id;
+      // ✅ Try multiple ways to get the technician ID
+      let activeId = route?.params?.userId || route?.params?.technicianId;
+      
       if (!activeId) {
         activeId = await SecureStore.getItemAsync('secure_user_id');
       }
 
+      console.log('🔍 Technician ID found:', activeId);
+      setDebugInfo(`Technician ID: ${activeId || 'Not found'}`);
+
       if (!activeId) {
         setReports([]);
+        setLoading(false);
         return;
       }
 
-      const response = await fetch(`${BASE_URL}/api/reports/technician/${activeId}`, {
+      const url = `${BASE_URL}/api/reports/technician/${activeId}`;
+      console.log('📡 Fetching from:', url);
+      setDebugInfo(`Fetching: ${url}`);
+
+      const response = await fetch(url, {
         headers: { 
           'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true', // UPDATED NGROK BYPASS HEADER
+          'ngrok-skip-browser-warning': 'true',
         }
       });
+      
+      console.log('📊 Response status:', response.status);
+      
       let data: any[] = [];
       
       if (response.ok) {
         data = await response.json();
+        console.log('✅ Data received:', data.length, 'reports');
+        setDebugInfo(`Found ${data.length} reports`);
+      } else {
+        const errorText = await response.text();
+        console.log('❌ Error response:', errorText);
+        setDebugInfo(`Error: ${response.status} - ${errorText}`);
       }
 
+      // Filter reports assigned to this technician
       const strictlyAssigned = (data || []).filter((r: any) => {
-        const assignedId = r.assignedToId || r.assignedTo?.id;
+        const assignedId = r.assignedToId || r.assignedTo?.id || r.technicianId;
         if (assignedId) {
           return String(assignedId) === String(activeId);
         }
         return true;
       });
 
+      console.log('📋 Filtered reports:', strictlyAssigned.length);
       setReports(strictlyAssigned);
     } catch (error) {
-      console.error("Error connecting to technician endpoint: ", error);
+      console.error("❌ Error connecting to technician endpoint:", error);
+      setDebugInfo(`Network Error: ${String(error)}`);
       setReports([]);
     } finally {
       setLoading(false);
@@ -115,7 +137,7 @@ export default function TechnicianOrdersScreen({ route, navigation, setUserRole 
 
   useEffect(() => {
     fetchAssignedTasks();
-  }, [route?.params?.technicianId]);
+  }, [route?.params?.userId, route?.params?.technicianId]);
 
   const onRefresh = () => {
     setRefreshing(true);
@@ -129,7 +151,7 @@ export default function TechnicianOrdersScreen({ route, navigation, setUserRole 
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true', // UPDATED NGROK BYPASS HEADER
+          'ngrok-skip-browser-warning': 'true',
         }
       });
 
@@ -159,7 +181,7 @@ export default function TechnicianOrdersScreen({ route, navigation, setUserRole 
               method: 'PUT',
               headers: { 
                 'Content-Type': 'application/json',
-                'ngrok-skip-browser-warning': 'true', // UPDATED NGROK BYPASS HEADER
+                'ngrok-skip-browser-warning': 'true',
               }
             });
 
@@ -190,7 +212,7 @@ export default function TechnicianOrdersScreen({ route, navigation, setUserRole 
               method: 'PUT',
               headers: { 
                 'Content-Type': 'application/json',
-                'ngrok-skip-browser-warning': 'true', // UPDATED NGROK BYPASS HEADER
+                'ngrok-skip-browser-warning': 'true',
               },
               body: JSON.stringify({ status: 'resolved' }),
             });
@@ -237,6 +259,13 @@ export default function TechnicianOrdersScreen({ route, navigation, setUserRole 
         </TouchableOpacity>
         <Text style={styles.titleText}>Estate Worker Board</Text>
       </View>
+
+      {/* DEBUG INFO - Remove after fixing */}
+      {debugInfo ? (
+        <View style={styles.debugContainer}>
+          <Text style={styles.debugText}>{debugInfo}</Text>
+        </View>
+      ) : null}
 
       {/* TAB SELECTOR BAR */}
       <View style={styles.tabBar}>
@@ -285,6 +314,9 @@ export default function TechnicianOrdersScreen({ route, navigation, setUserRole 
                     ? 'No active tasks in progress.' 
                     : 'No completed archives found.'}
               </Text>
+              {debugInfo ? (
+                <Text style={styles.debugText}>Debug: {debugInfo}</Text>
+              ) : null}
             </View>
           }
           renderItem={({ item }) => {
@@ -312,12 +344,10 @@ export default function TechnicianOrdersScreen({ route, navigation, setUserRole 
                 </Text>
                 <Text style={styles.cardDesc}>{item.description}</Text>
 
-                {/* DYNAMIC IMAGE OR VIDEO PREVIEW WITH SPINNER */}
                 {rawPath ? (
                   <MediaPreview fullMediaUrl={fullMediaUrl} isVideo={isVideo} />
                 ) : null}
 
-                {/* ACCEPT / REJECT ACTION BUTTONS FOR DISPATCH TAB */}
                 {viewTab === 'pending' && (
                   <View style={styles.actionRow}>
                     <TouchableOpacity 
@@ -335,7 +365,6 @@ export default function TechnicianOrdersScreen({ route, navigation, setUserRole 
                   </View>
                 )}
 
-                {/* RESOLVE BUTTON FOR ACTIVE TAB */}
                 {viewTab === 'active' && (
                   <TouchableOpacity style={styles.resolveBtn} onPress={() => handleResolve(item.id)}>
                     <Text style={styles.resolveBtnText}>MARK AS RESOLVED</Text>
@@ -355,6 +384,8 @@ const styles = StyleSheet.create({
   header: { padding: 20, borderBottomWidth: 1, borderColor: '#222' },
   backLink: { color: '#FF453A', fontSize: 14, fontWeight: '700', marginBottom: 6 },
   titleText: { fontSize: 24, fontWeight: '900', color: '#FFF' },
+  debugContainer: { backgroundColor: '#1a1a2e', padding: 10, marginHorizontal: 16, borderRadius: 8, marginBottom: 8 },
+  debugText: { color: '#F5A623', fontSize: 12, fontFamily: 'monospace' },
   tabBar: { flexDirection: 'row', backgroundColor: '#131316', margin: 16, marginBottom: 5, padding: 4, borderRadius: 10 },
   tab: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
   activeTab: { backgroundColor: '#F5A623' },
