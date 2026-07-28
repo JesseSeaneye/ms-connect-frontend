@@ -1,12 +1,26 @@
 // src/screens/SignUpScreen.tsx
-import React, { useState } from 'react';
-import { 
-  StyleSheet, Text, View, TextInput, TouchableOpacity, 
-  SafeAreaView, KeyboardAvoidingView, Platform, ScrollView, Alert 
+import React, { useState, useRef } from 'react';
+import {
+  StyleSheet,
+  Text,
+  View,
+  TextInput,
+  TouchableOpacity,
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Alert,
+  Animated,
+  Dimensions,
+  ActivityIndicator,
 } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 
-// ACTIVE BASE URL - Using ngrok static domain
+const { width, height } = Dimensions.get('window');
 const BASE_URL = 'https://neon-obstruct-refined.ngrok-free.dev';
+const SPECIALTIES = ['Electrical', 'Plumbing', 'Carpentry', 'Sanitation', 'IT / Wi-Fi', 'Masonry', 'General'];
 
 export default function SignUpScreen({ navigation }: any) {
   const [fullName, setFullName] = useState('');
@@ -14,29 +28,68 @@ export default function SignUpScreen({ navigation }: any) {
   const [hostel, setHostel] = useState('');
   const [roomNo, setRoomNo] = useState('');
   const [password, setPassword] = useState('');
-  
-  // New state variables for Role-Based Registration
+  const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState<'student' | 'technician' | 'admin'>('student');
   const [specialty, setSpecialty] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Animations
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const slideAnim = useRef(new Animated.Value(50)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+  const rotateAnim = useRef(new Animated.Value(0)).current;
+
+  React.useEffect(() => {
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 800,
+        useNativeDriver: true,
+      }),
+      Animated.spring(slideAnim, {
+        toValue: 0,
+        friction: 8,
+        tension: 40,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        friction: 8,
+        tension: 40,
+        useNativeDriver: true,
+      }),
+      Animated.loop(
+        Animated.timing(rotateAnim, {
+          toValue: 1,
+          duration: 30000,
+          useNativeDriver: true,
+        })
+      ),
+    ]).start();
+  }, []);
+
+  const rotate = rotateAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['0deg', '360deg'],
+  });
 
   const handleRegister = async () => {
-    // Validate required fields
     if (!fullName || !email || !password) {
       Alert.alert('Incomplete Fields', 'Please fill in all required information.');
       return;
     }
 
-    // ✅ VALIDATION: Only @gmail.com emails allowed
     if (!email.endsWith('@gmail.com')) {
       Alert.alert('Invalid Email', 'Please use a valid @gmail.com email address.');
       return;
     }
 
-    // Validate technician specialty
     if (role === 'technician' && !specialty) {
-      Alert.alert('Specialty Required', 'Please provide a specialty for the technician (e.g., Electrical, Plumbing).');
+      Alert.alert('Specialty Required', 'Please select a specialty for the technician.');
       return;
     }
+
+    setIsSubmitting(true);
 
     try {
       const response = await fetch(`${BASE_URL}/api/auth/register`, {
@@ -47,132 +100,367 @@ export default function SignUpScreen({ navigation }: any) {
         },
         body: JSON.stringify({
           name: fullName,
-          email: email,
-          password: password,
-          hostel: hostel,
-          roomNo: roomNo,
-          role: role,
+          email,
+          password,
+          hostel,
+          roomNo,
+          role,
           specialty: role === 'technician' ? specialty : null,
-          isAvailable: role === 'technician' ? true : null
+          isAvailable: role === 'technician' ? true : null,
         }),
       });
 
       if (response.ok) {
-        Alert.alert('Account Created', `Registration as ${role.toUpperCase()} successful! Proceed to sign in.`, [
-          { text: 'OK', onPress: () => navigation.navigate('Login') }
-        ]);
+        Alert.alert(
+          'Account Created 🎉',
+          `Registration as ${role.toUpperCase()} successful! Proceed to sign in.`,
+          [{ text: 'OK', onPress: () => navigation.navigate('Login') }]
+        );
       } else {
         const errorData = await response.json().catch(() => ({}));
         Alert.alert('Registration Failed', errorData.error || errorData.message || 'Failed to create account.');
       }
     } catch (error) {
-      console.error("Signup connection error: ", error);
       Alert.alert('Server Error', 'Unable to reach the server. Please check your network connection.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <LinearGradient colors={['#0a0a0f', '#1a1a2e', '#0a0a0f']} style={styles.container}>
+      {/* Animated Maintenance Icons Background */}
+      <Animated.View style={[styles.backgroundIcons, { transform: [{ rotate }] }]}>
+        <View style={styles.iconRow}>
+          <Text style={styles.bgIcon}>🛠️</Text>
+          <Text style={styles.bgIcon}>🔧</Text>
+          <Text style={styles.bgIcon}>⚡</Text>
+          <Text style={styles.bgIcon}>🔨</Text>
+        </View>
+        <View style={styles.iconRow}>
+          <Text style={styles.bgIcon}>💡</Text>
+          <Text style={styles.bgIcon}>🔌</Text>
+          <Text style={styles.bgIcon}>🚰</Text>
+          <Text style={styles.bgIcon}>🧰</Text>
+        </View>
+        <View style={styles.iconRow}>
+          <Text style={styles.bgIcon}>🔩</Text>
+          <Text style={styles.bgIcon}>💡</Text>
+          <Text style={styles.bgIcon}>🔧</Text>
+          <Text style={styles.bgIcon}>⚡</Text>
+        </View>
+      </Animated.View>
+
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
         <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-          
-          <View style={styles.headerContainer}>
-            <Text style={styles.logoText}>CREATE ACCOUNT</Text>
-            <Text style={styles.taglineText}>Join the MS CONNECT Maintenance Platform</Text>
-          </View>
+          <Animated.View style={[
+            styles.content,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }, { scale: scaleAnim }],
+            },
+          ]}>
+            {/* Header */}
+            <View style={styles.headerContainer}>
+              <View style={styles.logoCircle}>
+                <Text style={styles.logoEmoji}>🛠️</Text>
+              </View>
+              <Text style={styles.logoText}>CREATE ACCOUNT</Text>
+              <Text style={styles.taglineText}>Join the MS CONNECT Maintenance Platform</Text>
+            </View>
 
-          <View style={styles.formContainer}>
-            
-            {/* ROLE SELECTOR TOGGLE */}
-            <Text style={styles.inputLabel}>Register Account As</Text>
-            <View style={styles.roleToggleContainer}>
-              <TouchableOpacity 
-                style={[styles.roleOption, role === 'student' && styles.activeRoleOption]} 
-                onPress={() => setRole('student')}
-              >
-                <Text style={[styles.roleOptionText, role === 'student' && styles.activeRoleOptionText]}>Student</Text>
-              </TouchableOpacity>
+            {/* Form */}
+            <View style={styles.formContainer}>
+              <Text style={styles.welcomeText}>Get Started</Text>
+              <Text style={styles.subText}>Create your account to begin</Text>
 
-              <TouchableOpacity 
-                style={[styles.roleOption, role === 'technician' && styles.activeRoleOption]} 
-                onPress={() => setRole('technician')}
-              >
-                <Text style={[styles.roleOptionText, role === 'technician' && styles.activeRoleOptionText]}>Technician</Text>
-              </TouchableOpacity>
+              {/* Role Selector */}
+              <Text style={styles.inputLabel}>Register As</Text>
+              <View style={styles.roleToggleContainer}>
+                {['student', 'technician', 'admin'].map((r) => (
+                  <TouchableOpacity
+                    key={r}
+                    style={[styles.roleOption, role === r && styles.activeRoleOption]}
+                    onPress={() => setRole(r as any)}
+                  >
+                    <Text style={[styles.roleOptionText, role === r && styles.activeRoleOptionText]}>
+                      {r.toUpperCase()}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
 
-              <TouchableOpacity 
-                style={[styles.roleOption, role === 'admin' && styles.activeRoleOption]} 
-                onPress={() => setRole('admin')}
+              {/* Full Name */}
+              <View style={styles.inputWrapper}>
+                <Ionicons name="person-outline" size={20} color="#F5A623" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.inputField}
+                  placeholder="Full Name"
+                  placeholderTextColor="#555"
+                  value={fullName}
+                  onChangeText={setFullName}
+                />
+              </View>
+
+              {/* Email */}
+              <View style={styles.inputWrapper}>
+                <Ionicons name="mail-outline" size={20} color="#F5A623" style={styles.inputIcon} />
+                <TextInput
+                  style={styles.inputField}
+                  placeholder="username@gmail.com"
+                  placeholderTextColor="#555"
+                  value={email}
+                  onChangeText={setEmail}
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
+
+              {/* Technician Specialty */}
+              {role === 'technician' && (
+                <View style={styles.specialtySection}>
+                  <Text style={styles.inputLabel}>Technician Specialty</Text>
+                  <View style={styles.specialtyContainer}>
+                    {SPECIALTIES.map((spec) => (
+                      <TouchableOpacity
+                        key={spec}
+                        style={[styles.specialtyOption, specialty === spec && styles.specialtyOptionActive]}
+                        onPress={() => setSpecialty(spec)}
+                      >
+                        <Text style={[styles.specialtyOptionText, specialty === spec && styles.specialtyOptionTextActive]}>
+                          {spec}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+              )}
+
+              {/* Hostel & Room No */}
+              {role === 'student' && (
+                <View style={styles.row}>
+                  <View style={[styles.inputWrapper, { flex: 1.5, marginRight: 8 }]}>
+                    <Ionicons name="home-outline" size={20} color="#F5A623" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.inputField}
+                      placeholder="Hostel"
+                      placeholderTextColor="#555"
+                      value={hostel}
+                      onChangeText={setHostel}
+                    />
+                  </View>
+                  <View style={[styles.inputWrapper, { flex: 1 }]}>
+                    <Ionicons name="key-outline" size={20} color="#F5A623" style={styles.inputIcon} />
+                    <TextInput
+                      style={styles.inputField}
+                      placeholder="Room No."
+                      placeholderTextColor="#555"
+                      value={roomNo}
+                      onChangeText={setRoomNo}
+                      keyboardType="numeric"
+                    />
+                  </View>
+                </View>
+              )}
+
+              {/* Password */}
+              <View style={styles.inputWrapper}>
+                <Ionicons name="lock-closed-outline" size={20} color="#F5A623" style={styles.inputIcon} />
+                <TextInput
+                  style={[styles.inputField, { flex: 1 }]}
+                  placeholder="Password"
+                  placeholderTextColor="#555"
+                  value={password}
+                  onChangeText={setPassword}
+                  secureTextEntry={!showPassword}
+                />
+                <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeIcon}>
+                  <Ionicons name={showPassword ? 'eye-off-outline' : 'eye-outline'} size={20} color="#666" />
+                </TouchableOpacity>
+              </View>
+
+              {/* Register Button */}
+              <TouchableOpacity
+                style={[styles.registerButton, isSubmitting && styles.registerButtonDisabled]}
+                onPress={handleRegister}
+                disabled={isSubmitting}
               >
-                <Text style={[styles.roleOptionText, role === 'admin' && styles.activeRoleOptionText]}>Admin</Text>
+                {isSubmitting ? (
+                  <ActivityIndicator color="#09090B" />
+                ) : (
+                  <Text style={styles.registerButtonText}>REGISTER AS {role.toUpperCase()}</Text>
+                )}
               </TouchableOpacity>
             </View>
 
-            <Text style={styles.inputLabel}>Full Name</Text>
-            <TextInput style={styles.inputField} placeholder="Kwaku Ohene-Djan Junior" placeholderTextColor="#444" value={fullName} onChangeText={setFullName} />
+            {/* Back to Login */}
+            <View style={styles.backContainer}>
+              <Text style={styles.backText}>Already registered? </Text>
+              <TouchableOpacity onPress={() => navigation.navigate('Login')}>
+                <Text style={styles.backLink}>Sign In</Text>
+              </TouchableOpacity>
+            </View>
 
-            <Text style={styles.inputLabel}>Email Address</Text>
-            <TextInput style={styles.inputField} placeholder="username@gmail.com" placeholderTextColor="#444" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" />
-
-            {/* TECHNICIAN SPECIALTY FIELD (ONLY VISIBLE IF TECHNICIAN IS SELECTED) */}
-            {role === 'technician' && (
-              <>
-                <Text style={styles.inputLabel}>Technician Specialty</Text>
-                <TextInput style={styles.inputField} placeholder="e.g., Electrical, Plumbing, Carpentry" placeholderTextColor="#444" value={specialty} onChangeText={setSpecialty} />
-              </>
-            )}
-
-            {/* HOSTEL & ROOM NO (PRIMARY FOR STUDENTS) */}
-            {role === 'student' && (
-              <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                <View style={{ flex: 1.5, marginRight: 8 }}>
-                  <Text style={styles.inputLabel}>Hostel / Residence</Text>
-                  <TextInput style={styles.inputField} placeholder="Unity Hall" placeholderTextColor="#444" value={hostel} onChangeText={setHostel} />
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.inputLabel}>Room No.</Text>
-                  <TextInput style={styles.inputField} placeholder="42" placeholderTextColor="#444" value={roomNo} onChangeText={setRoomNo} keyboardType="numeric" />
-                </View>
-              </View>
-            )}
-
-            <Text style={styles.inputLabel}>Password</Text>
-            <TextInput style={styles.inputField} placeholder="••••••••" placeholderTextColor="#444" value={password} onChangeText={setPassword} secureTextEntry />
-
-            <TouchableOpacity style={styles.registerButton} onPress={handleRegister}>
-              <Text style={styles.registerButtonText}>REGISTER AS {role.toUpperCase()}</Text>
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity style={styles.backButton} onPress={() => navigation.navigate('Login')}>
-            <Text style={styles.backButtonText}>Already registered? <Text style={{ color: '#F5A623' }}>Sign In</Text></Text>
-          </TouchableOpacity>
-
+            <Text style={styles.footer}>MS CONNECT v2.0 • Group 111 | powered by KNUST</Text>
+          </Animated.View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </LinearGradient>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#09090B' },
-  scrollContainer: { padding: 24, justifyContent: 'center', flexGrow: 1 },
-  headerContainer: { alignItems: 'center', marginBottom: 24 },
-  logoText: { fontSize: 28, fontWeight: '900', color: '#F5A623', letterSpacing: 1 },
+  container: { flex: 1 },
+  scrollContainer: { flexGrow: 1, paddingVertical: 40 },
+  content: { paddingHorizontal: 24 },
+  backgroundIcons: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    opacity: 0.05,
+  },
+  iconRow: { flexDirection: 'row', marginVertical: 20 },
+  bgIcon: { fontSize: 50, marginHorizontal: 20 },
+  headerContainer: { alignItems: 'center', marginBottom: 32 },
+  logoCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: 'rgba(245, 166, 35, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2,
+    borderColor: '#F5A623',
+    marginBottom: 12,
+    shadowColor: '#F5A623',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+  },
+  logoEmoji: { fontSize: 36 },
+  logoText: {
+    fontSize: 28,
+    fontWeight: '900',
+    color: '#F5A623',
+    letterSpacing: 1,
+    textShadowColor: 'rgba(245, 166, 35, 0.2)',
+    textShadowOffset: { width: 0, height: 2 },
+    textShadowRadius: 4,
+  },
   taglineText: { fontSize: 13, color: '#666', marginTop: 4 },
-  formContainer: { backgroundColor: '#131316', borderRadius: 20, paddingHorizontal: 20, paddingVertical: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.04)' },
-  inputLabel: { fontSize: 11, fontWeight: '700', color: '#8A8A8E', marginBottom: 4, marginTop: 12, letterSpacing: 0.3 },
-  inputField: { backgroundColor: '#09090B', color: '#FFF', borderRadius: 10, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, borderWidth: 1, borderColor: '#222', marginTop: 2 },
-  
-  // ROLE TOGGLE STYLES
-  roleToggleContainer: { flexDirection: 'row', backgroundColor: '#09090B', borderRadius: 10, padding: 3, borderWidth: 1, borderColor: '#222', marginTop: 4, marginBottom: 4 },
-  roleOption: { flex: 1, paddingVertical: 10, alignItems: 'center', borderRadius: 8 },
+  formContainer: {
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+  },
+  welcomeText: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#FFF',
+    marginBottom: 2,
+  },
+  subText: {
+    fontSize: 13,
+    color: '#888',
+    marginBottom: 20,
+  },
+  inputLabel: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#8A8A8E',
+    marginBottom: 6,
+    marginTop: 10,
+  },
+  inputWrapper: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 12,
+    paddingHorizontal: 14,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.06)',
+  },
+  inputIcon: { marginRight: 10 },
+  inputField: {
+    flex: 1,
+    color: '#FFF',
+    paddingVertical: 12,
+    fontSize: 15,
+  },
+  eyeIcon: { padding: 8 },
+  row: { flexDirection: 'row' },
+  roleToggleContainer: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderRadius: 10,
+    padding: 3,
+    marginTop: 4,
+    marginBottom: 4,
+  },
+  roleOption: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
   activeRoleOption: { backgroundColor: '#F5A623' },
-  roleOptionText: { color: '#8A8A8E', fontSize: 12, fontWeight: '800' },
+  roleOptionText: { color: '#666', fontSize: 12, fontWeight: '800' },
   activeRoleOptionText: { color: '#09090B' },
-
-  registerButton: { backgroundColor: '#F5A623', borderRadius: 12, paddingVertical: 15, alignItems: 'center', marginTop: 24 },
-  registerButtonText: { color: '#09090B', fontSize: 15, fontWeight: '900' },
-  backButton: { alignItems: 'center', marginTop: 24 },
-  backButtonText: { color: '#666', fontSize: 13, fontWeight: '600' }
+  specialtySection: { marginTop: 4 },
+  specialtyContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 4,
+  },
+  specialtyOption: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: 'rgba(255,255,255,0.05)',
+    borderWidth: 1,
+    borderColor: 'rgba(255,255,255,0.08)',
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  specialtyOptionActive: { backgroundColor: '#F5A623', borderColor: '#F5A623' },
+  specialtyOptionText: { color: '#666', fontSize: 12, fontWeight: '600' },
+  specialtyOptionTextActive: { color: '#09090B' },
+  registerButton: {
+    backgroundColor: '#F5A623',
+    borderRadius: 12,
+    paddingVertical: 16,
+    alignItems: 'center',
+    marginTop: 20,
+    shadowColor: '#F5A623',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+  },
+  registerButtonDisabled: { opacity: 0.6 },
+  registerButtonText: {
+    color: '#09090B',
+    fontSize: 15,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  backContainer: { flexDirection: 'row', justifyContent: 'center', marginTop: 20 },
+  backText: { color: '#666', fontSize: 14 },
+  backLink: { color: '#F5A623', fontSize: 14, fontWeight: '700' },
+  footer: {
+    textAlign: 'center',
+    color: '#333',
+    fontSize: 11,
+    marginTop: 20,
+  },
 });
